@@ -36,7 +36,7 @@ export class RateLimitError extends ServiceError {
 }
 
 export class ServerError extends ServiceError {
-  constructor(message: string, response: unknown) {
-    super(message, 500, response);
+  constructor(message: string, response: unknown, status = 500) {
+    super(message, status, response);
   }
 }

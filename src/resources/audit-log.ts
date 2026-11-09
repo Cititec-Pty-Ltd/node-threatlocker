@@ -8,6 +8,7 @@ import type {
   PaginatedResponse,
 } from '../types/index.js';
 import { unwrapPaginatedResponse } from '../pagination.js';
+import { nonEmptyString } from '../validation.js';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -149,12 +150,6 @@ const FILE_HISTORY_PARAM_ERROR =
   'auditLog.getFileHistory requires fullPath and either hostname or computerId. ' +
   'ActionLogGetAllForFileHistoryV2 returns HTTP 417 "Missing Parameters. Unable to load details." ' +
   'when only fullPath is sent. Pass { fullPath, hostname } or { fullPath, computerId }.';
-
-function nonEmptyString(value: unknown): string | undefined {
-  if (typeof value !== 'string') return undefined;
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-}
 
 function fileHistoryQuery(params: FileHistoryParams): Record<string, unknown> {
   // A string (the previous signature) has typeof 'string', so this also

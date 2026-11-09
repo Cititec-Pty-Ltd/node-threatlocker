@@ -33,7 +33,7 @@ function resolveStatusId(status: string | undefined): number {
 }
 
 const APPROVAL_AUTH_MESSAGE =
-  'Authentication failed (401) for ApprovalRequest endpoints. The API key was rejected for the Approval Center; ' +
+  'The API key was rejected for the Approval Center; ' +
   'check that the ThreatLocker API user/role has Approval Center (approval request) view permissions for this organization.';
 
 export class ApprovalRequestsResource {
@@ -44,7 +44,7 @@ export class ApprovalRequestsResource {
       return await call();
     } catch (err) {
       if (err instanceof AuthenticationError) {
-        throw new AuthenticationError(APPROVAL_AUTH_MESSAGE, err.response);
+        throw new AuthenticationError(`${err.message}. ${APPROVAL_AUTH_MESSAGE}`, err.response);
       }
       throw err;
     }

@@ -175,7 +175,7 @@ export class HttpClient {
         }
         default:
           if (response.status >= 500) {
-            lastError = new ServerError(`Server error: ${response.status} for ${path}`, responseBody);
+            lastError = new ServerError(`Server error: ${response.status} for ${path}`, responseBody, response.status);
             const retryable =
               response.status === 502 || response.status === 503 || response.status === 504 ||
               (response.status === 500 && options.retryServerErrors === true);

@@ -2,6 +2,7 @@ import type { HttpClient } from '../http.js';
 import type { Organization, OrganizationListParams, AuthKey, OrganizationGetAuthKeyOptions, PaginatedResponse } from '../types/index.js';
 import { buildSearchBody } from '../types/index.js';
 import { unwrapPaginatedResponse } from '../pagination.js';
+import { nonEmptyString } from '../validation.js';
 
 export class OrganizationsResource {
   constructor(private readonly http: HttpClient) {}
@@ -25,11 +26,18 @@ export class OrganizationsResource {
    * normalized so `authKey` and the deprecated `key` are both populated.
    */
   async getAuthKey(options?: OrganizationGetAuthKeyOptions): Promise<AuthKey> {
+    let organizationId: string | undefined;
+    if (options?.organizationId !== undefined) {
+      organizationId = nonEmptyString(options.organizationId);
+      if (!organizationId) {
+        throw new Error('organizations.getAuthKey organizationId must be a non-empty string (organization GUID).');
+      }
+    }
     const response = await this.http.request<AuthKey | string>('/Organization/OrganizationGetAuthKeyById', {
-      managedOrganizationId: options?.organizationId,
+      managedOrganizationId: organizationId,
     });
     if (typeof response === 'string') {
-      return { authKey: response, key: response, organizationId: options?.organizationId };
+      return { authKey: response, key: response, organizationId };
     }
     const result: AuthKey = { ...response };
     if (result.authKey === undefined && result.key !== undefined) result.authKey = result.key;

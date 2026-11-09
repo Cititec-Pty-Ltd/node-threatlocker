@@ -45,7 +45,7 @@ describe('5xx retry policy', () => {
     vi.useFakeTimers({ toFake: ['setTimeout'] });
     const state = countingHandler(503);
     const p = makeHttp(2).request('/Thing');
-    const assertion = expect(p).rejects.toBeInstanceOf(ServerError);
+    const assertion = expect(p).rejects.toMatchObject({ statusCode: 503 });
     await vi.runAllTimersAsync();
     await assertion;
     expect(state.count).toBe(3);
@@ -138,9 +138,22 @@ describe('organizations.getAuthKey', () => {
       }),
     );
     const client = new ThreatLockerClient({ apiKey: 'k' });
-    const result = await client.organizations.getAuthKey({ organizationId: CHILD });
+    const result = await client.organizations.getAuthKey({ organizationId: `  ${CHILD} ` });
     expect(org).toBe(CHILD);
     expect(result).toEqual({ authKey: 'secret-key', key: 'secret-key', organizationId: CHILD });
+  });
+
+  it.each(['', '  \t\n'])('rejects blank organizationId %j before any request', async organizationId => {
+    const request = vi.fn();
+    server.use(
+      http.get(`${BASE_URL}/Organization/OrganizationGetAuthKeyById`, () => {
+        request();
+        return HttpResponse.json({});
+      }),
+    );
+    const client = new ThreatLockerClient({ apiKey: 'k', organizationId: ORG });
+    await expect(client.organizations.getAuthKey({ organizationId })).rejects.toThrow(/organizationId/);
+    expect(request).not.toHaveBeenCalled();
   });
 
   it('fills key from authKey for a JSON body', async () => {
@@ -173,11 +186,15 @@ describe('401 messages', () => {
       ),
     );
     const client = new ThreatLockerClient({ apiKey: 'k' });
-    for (const call of [() => client.approvalRequests.list(), () => client.approvalRequests.getPendingCount()]) {
+    for (const [path, call] of [
+      ['/ApprovalRequest/ApprovalRequestGetByParameters', () => client.approvalRequests.list()],
+      ['/ApprovalRequest/ApprovalRequestGetCount', () => client.approvalRequests.getPendingCount()],
+    ] as const) {
       const err = await call().catch(e => e);
       expect(err).toBeInstanceOf(AuthenticationError);
-      expect(err.message).toMatch(/^Authentication failed \(401\) for ApprovalRequest endpoints/);
-      expect(err.message).toContain('Approval Center');
+      expect(err.message).toContain(`Authentication failed (401) for ${path}`);
+      expect(err.message).toMatch(/Approval Center/);
+      expect(err.statusCode).toBe(401);
       expect(err.response).toEqual({ m: 'no' });
     }
   });
