@@ -1,5 +1,5 @@
 {
-  "name": "@wyre-ai/node-threatlocker",
+  "name": "@cititec-pty-ltd/node-threatlocker",
   "version": "1.0.6",
   "description": "Node.js client library for the ThreatLocker Portal API",
   "type": "module",
@@ -55,6 +55,10 @@
   },
   "engines": {
     "node": ">=18.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Cititec-Pty-Ltd/node-threatlocker.git"
   },
   "publishConfig": {
     "registry": "https://npm.pkg.github.com"
