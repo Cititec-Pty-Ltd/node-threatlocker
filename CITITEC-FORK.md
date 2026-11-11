@@ -57,6 +57,22 @@ Do not rebase our `main` or force-push it. The **Protect main** ruleset blocks f
 deleting `main` on purpose, so the fork's history cannot be lost. GitHub's **Sync fork** button
 only works while there are no conflicts; otherwise merge as above.
 
+## Weekly Wyre check (automatic)
+
+The **Cititec Wyre sync** workflow (`.github/workflows/cititec-wyre-sync.yml`) runs every
+Tuesday morning (Australian time), and can also be started from the Actions tab
+(**Run workflow**). It does the "Bring Wyre's updates in" steps for you, up to the PR:
+
+- Up to date with Wyre: nothing happens.
+- New Wyre commits that merge cleanly: it creates a `sync/wyre-<sha>` branch, runs install,
+  build and tests on the merged code, and opens a PR into `main` with Wyre's commit list and
+  the test result. **Review and merge it yourself** - nothing is merged or released
+  automatically. If CI does not start on that PR, close and reopen it.
+- Conflicts, Wyre changes to `.github/workflows/`, or PR creation not allowed: it opens an
+  issue (or, with Issues off, fails the run so GitHub emails it) saying what to merge by hand.
+
+After merging a sync PR, the release still needs the MCP host step below.
+
 ## Protection
 
 - Ruleset **Protect main**: `main` cannot be deleted or force-pushed. Normal pushes and PR merges
