@@ -1,3 +1,6 @@
+> **Cititec fork** of [WYRE-AI/node-threatlocker](https://github.com/WYRE-AI/node-threatlocker). Before changing anything, read
+> [CITITEC-FORK.md](CITITEC-FORK.md): which changes go back to Wyre and which stay in this fork.
+
 # node-threatlocker
 
 [![Build Status](https://github.com/WYRE-AI/node-threatlocker/actions/workflows/release.yml/badge.svg)](https://github.com/WYRE-AI/node-threatlocker/actions/workflows/release.yml)
