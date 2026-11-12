@@ -166,6 +166,71 @@ describe('auditLog.search — date-range + paramsFieldsDto + usenewsearch contra
     expect(seen[0].body.startDate).toBe('2026-08-01T00:00:00Z');
     expect(seen[0].body.endDate).toBe('2026-08-09T00:00:00Z');
   });
+
+  it('sends actionId, actionType and groupBys for a deny breakdown', async () => {
+    const seen = arm();
+    await client.auditLog.search({ actionId: 2, actionType: ' execute ', groupBys: [6, 9] });
+    expect(seen[0].body).toMatchObject({ actionId: 2, actionType: 'execute', groupBys: [6, 9] });
+  });
+
+  it('exposes groupByCount on grouped search rows', async () => {
+    server.use(
+      http.post(`${BASE_URL}/ActionLog/ActionLogGetByParametersV2`, async ({ request }) => {
+        const body: any = await request.json();
+        if (!body.startDate || !body.endDate) {
+          return HttpResponse.json(
+            { LoggerId: 'x', StatusCode: 417, Message: 'Invalid Date Range' },
+            { status: 417 },
+          );
+        }
+        return HttpResponse.json(
+          [{ actionType: 'Execute', policyName: 'Block USB', groupByCount: 42 }],
+          { headers: { pagination: paginationHeader(1) } },
+        );
+      }),
+    );
+    const { items } = await client.auditLog.search({ actionId: 2, groupBys: [6, 9] });
+    expect(items[0]?.groupByCount).toBe(42);
+  });
+
+  it('leaves the action filters out when they are not set', async () => {
+    const seen = arm();
+    await client.auditLog.search();
+    for (const key of ['actionId', 'actionType', 'groupBys', 'onlyTrueDenies', 'simulateDeny']) {
+      expect(seen[0].body).not.toHaveProperty(key);
+    }
+  });
+
+  it('fills in actionId 99 for onlyTrueDenies and simulateDeny', async () => {
+    const seen = arm();
+    await client.auditLog.search({ onlyTrueDenies: true });
+    await client.auditLog.search({ simulateDeny: true, actionId: 99 });
+    expect(seen[0].body).toMatchObject({ actionId: 99, onlyTrueDenies: true });
+    expect(seen[1].body).toMatchObject({ actionId: 99, simulateDeny: true });
+  });
+
+  it('sends the documented paramsFieldsDto predicate with each deny-type flag', async () => {
+    const seen = arm();
+    await client.auditLog.search({ onlyTrueDenies: true });
+    await client.auditLog.search({ simulateDeny: true });
+    await client.auditLog.search({ actionId: 2 });
+    expect(seen[0].body.paramsFieldsDto).toEqual([
+      { fieldAttributeId: 34, fieldType: 1, filterType: 1, name: 'MonitorOnly', value: 'false' },
+    ]);
+    expect(seen[1].body.paramsFieldsDto).toEqual([{ filterType: 1, name: 'filter', value: 'monitoronly' }]);
+    expect(seen[2].body.paramsFieldsDto).toEqual([]);
+  });
+
+  it('rejects bad action filters before any request', async () => {
+    const seen = arm();
+    await expect(client.auditLog.search({ actionId: 4 as never })).rejects.toThrow(/actionId/);
+    await expect(client.auditLog.search({ onlyTrueDenies: true, actionId: 2 })).rejects.toThrow(/99/);
+    await expect(client.auditLog.search({ onlyTrueDenies: true, simulateDeny: true })).rejects.toThrow(/not both/);
+    await expect(client.auditLog.search({ groupBys: [] })).rejects.toThrow(/groupBys/);
+    await expect(client.auditLog.search({ groupBys: [1, 2, 3] })).rejects.toThrow(/groupBys/);
+    await expect(client.auditLog.search({ groupBys: [1.5] })).rejects.toThrow(/groupBys/);
+    expect(seen).toHaveLength(0);
+  });
 });
 
 describe('auditLog.get — ActionLogGetByIdV2 eActionLogId contract', () => {
@@ -314,6 +379,44 @@ describe('auditLog.getFileHistory — fullPath + hostname|computerId contract', 
     expect(params.get('sourceTableId')).toBe('2');
     expect(params.get('pageNumber')).toBe('3');
     expect(params.get('pageSize')).toBe('50');
+  });
+
+  it('sends organizationId as the ManagedOrganizationId header, not as a query param', async () => {
+    const captured: { org?: string | null; orgQuery?: string | null } = {};
+    server.use(
+      http.get(`${BASE_URL}/ActionLog/ActionLogGetAllForFileHistoryV2`, ({ request }) => {
+        captured.org = request.headers.get('ManagedOrganizationId');
+        captured.orgQuery = new URL(request.url).searchParams.get('organizationId');
+        return HttpResponse.json([]);
+      }),
+    );
+    await client.auditLog.getFileHistory({
+      fullPath: 'C:\\app.exe',
+      hostname: 'WS-01',
+      organizationId: '  0b1c2d3e-4f50-4a61-8b72-93a4b5c6d7e8  ',
+    });
+    expect(captured.org).toBe('0b1c2d3e-4f50-4a61-8b72-93a4b5c6d7e8');
+    expect(captured.orgQuery).toBeNull();
+  });
+
+  it('sends no ManagedOrganizationId header when organizationId is omitted', async () => {
+    const captured: { org?: string | null } = {};
+    server.use(
+      http.get(`${BASE_URL}/ActionLog/ActionLogGetAllForFileHistoryV2`, ({ request }) => {
+        captured.org = request.headers.get('ManagedOrganizationId');
+        return HttpResponse.json([]);
+      }),
+    );
+    await client.auditLog.getFileHistory({ fullPath: 'C:\\app.exe', hostname: 'WS-01' });
+    expect(captured.org).toBeNull();
+  });
+
+  it('rejects a blank organizationId before any request', async () => {
+    const seen = arm();
+    await expect(
+      client.auditLog.getFileHistory({ fullPath: 'C:\\app.exe', hostname: 'WS-01', organizationId: '   ' }),
+    ).rejects.toThrow(/organizationId/);
+    expect(seen).toHaveLength(0);
   });
 
   it('unwraps a { logs } body as well as a bare array', async () => {

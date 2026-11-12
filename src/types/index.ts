@@ -111,6 +111,11 @@ export interface AuditLogEntry {
    * `organizationId` to scope the lookup (needed for child-organization rows).
    */
   organizationId?: string;
+  /**
+   * Present when the search used `groupBys`. Count of matching rows in this
+   * group (for example denies per policy name and action type).
+   */
+  groupByCount?: number;
 }
 
 /**
@@ -135,8 +140,47 @@ export interface AuditLogGetOptions {
   organizationId?: string;
 }
 
+/**
+ * `actionId` filter on `ActionLogGetByParametersV2`.
+ * 1 Permit, 2 Deny, 3 Deny (Option to Request), 6 Ringfenced, 99 Any Deny.
+ */
+export type AuditLogActionId = 1 | 2 | 3 | 6 | 99;
+
+/** `actionType` values `ActionLogGetByParametersV2` matches (exact, lower case). */
+export const AUDIT_LOG_ACTION_TYPES = [
+  'execute',
+  'install',
+  'network',
+  'registry',
+  'read',
+  'write',
+  'move',
+  'delete',
+  'baseline',
+  'powershell',
+  'elevate',
+  'configuration',
+  'dns',
+] as const;
+
 export interface AuditLogSearchParams extends Partial<PaginationParams> {
+  /**
+   * Action type filter, matched exactly by ThreatLocker. One of
+   * `AUDIT_LOG_ACTION_TYPES` (execute, install, network, ...).
+   */
   actionType?: string;
+  /** Result filter. 1 Permit, 2 Deny, 3 Deny (Option to Request), 6 Ringfenced, 99 Any Deny. */
+  actionId?: AuditLogActionId;
+  /** Only real (enforced) denies. Requires actionId 99; set to 99 when omitted. */
+  onlyTrueDenies?: boolean;
+  /** Only simulated (monitor-only) denies. Requires actionId 99; set to 99 when omitted. */
+  simulateDeny?: boolean;
+  /**
+   * Group results by one or two fields; each row then carries `groupByCount`.
+   * Examples: 1 Username, 2 Process Path, 5 Policy Id, 6 Policy Name,
+   * 9 Action Type, 10 Full Path, 17 Asset Name.
+   */
+  groupBys?: number[];
   /** Range start (ISO 8601). Defaults to 24h before endDate. Alias: fromDate. */
   startDate?: string | Date;
   /** Range end (ISO 8601). Defaults to now. Alias: toDate. */
@@ -170,6 +214,13 @@ export interface FileHistoryParams {
   sourceTableId?: number;
   pageNumber?: number;
   pageSize?: number;
+  /**
+   * GUID of the organization that owns the computer. Sent as the
+   * `ManagedOrganizationId` header for this request only (not as a query
+   * param). Without it the lookup runs in the API key's own organization, so a
+   * computer in a child organization returns an empty history.
+   */
+  organizationId?: string;
 }
 
 // Organization types
