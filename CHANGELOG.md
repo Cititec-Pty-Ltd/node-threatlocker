@@ -1,5 +1,6 @@
 ## [Unreleased]
 
+- Fixed: HTTP 429 retries are bounded. A 429 is retried at most twice (and never more than `maxRetries`), waiting for `Retry-After` (seconds or HTTP date) or 1 s then 2 s without one, capped at 10 s per wait and 20 s in total, with no extra backoff on top. A longer `Retry-After` is no longer waited for (it used to hold the call for up to 60 s per attempt). `RateLimitError` now reads `ThreatLocker rate-limited the request (HTTP 429) for <path>. Try again in N s.`
 - Added: `AuditLogEntry.groupByCount` so grouped `auditLog.search()` results are typed
 - Added: `auditLog.search()` accepts `actionId` (1 Permit, 2 Deny, 3 Deny with option to request, 6 Ringfenced, 99 Any Deny), `onlyTrueDenies`, `simulateDeny` and `groupBys`, so denies can be filtered and counted by policy or action type. `actionType` is now trimmed.
 - Fixed: `auditLog.getFileHistory()` accepts `organizationId` and sends it as the `ManagedOrganizationId` header, so file history works for computers in child organizations (it returned an empty array for them)

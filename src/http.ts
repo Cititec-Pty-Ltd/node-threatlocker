@@ -1,4 +1,5 @@
 import { RateLimiter } from './rate-limiter.js';
+import { parseRetryAfter, retryDelayMs } from './rate-limit.js';
 import {
   ServiceError,
   AuthenticationError,
@@ -8,6 +9,9 @@ import {
   ServerError,
   ValidationError,
 } from './errors.js';
+
+/** Wait reported in a RateLimitError when the 429 has no Retry-After. */
+const DEFAULT_RETRY_AFTER_SECONDS = 60;
 
 export interface HttpClientConfig {
   baseUrl: string;
@@ -92,9 +96,14 @@ export class HttpClient {
     }
 
     let lastError: Error | null = null;
+    let rateLimitDelayMs: number | undefined;
+    let rateLimitRetries = 0;
+    let rateLimitWaitedMs = 0;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) {
-        const delay = Math.min(1000 * 2 ** (attempt - 1), 30_000);
+        // A 429 sets its own (bounded) wait; everything else backs off.
+        const delay = rateLimitDelayMs ?? Math.min(1000 * 2 ** (attempt - 1), 30_000);
+        rateLimitDelayMs = undefined;
         await new Promise(r => setTimeout(r, delay));
       }
 
@@ -166,12 +175,24 @@ export class HttpClient {
         case 404:
           throw new NotFoundError('Resource not found', responseBody);
         case 429: {
-          const retryAfter = parseInt(response.headers.get('retry-after') || '60', 10);
-          if (attempt < this.maxRetries) {
-            await new Promise(r => setTimeout(r, retryAfter * 1000));
+          // Retried at most twice, and only while the wait is short (see
+          // rate-limit.ts): a long Retry-After is reported at once instead of
+          // holding the call for a minute or more.
+          const retryAfterMs = parseRetryAfter(response.headers.get('retry-after'));
+          const delay = retryDelayMs(rateLimitRetries, retryAfterMs, rateLimitWaitedMs);
+          if (delay !== undefined && attempt < this.maxRetries) {
+            rateLimitRetries++;
+            rateLimitWaitedMs += delay;
+            rateLimitDelayMs = delay;
             continue;
           }
-          throw new RateLimitError('Rate limit exceeded', retryAfter, responseBody);
+          const retryAfter =
+            retryAfterMs === undefined ? DEFAULT_RETRY_AFTER_SECONDS : Math.max(1, Math.ceil(retryAfterMs / 1000));
+          throw new RateLimitError(
+            `ThreatLocker rate-limited the request (HTTP 429) for ${path}. Try again in ${retryAfter} s.`,
+            retryAfter,
+            responseBody,
+          );
         }
         default:
           if (response.status >= 500) {
