@@ -178,6 +178,7 @@ Built-in token bucket rate limiter with configurable limits:
 ### Retry policy
 
 - Network errors and HTTP 502/503/504 (transient gateway errors) are retried with exponential backoff, up to `maxRetries`.
+- Only requests that are safe to send again are retried (on a 429, 5xx or network error): GET/HEAD/OPTIONS, and read-only searches sent as POST, which pass `idempotent: true` (`RequestOptions`). Any other request fails at once, because ThreatLocker does not document that a rate-limited or failed write had no effect. A 503 with `Retry-After` keeps the wait in the error (`Server error: 503 for <path>. Try again in N s.`).
 - HTTP 500 is **not** retried by default: ThreatLocker returns it deterministically for bad ids or organization scope, so retrying only adds latency. Internal callers can opt in per request with `retryServerErrors: true` (`RequestOptions`).
 - `AuthenticationError` and `ServerError` messages include the request path, e.g. `Server error: 500 for /ActionLog/ActionLogGetByIdV2`.
 - `approvalRequests.*` 401s are rethrown with a hint to check the API user's Approval Center permissions.

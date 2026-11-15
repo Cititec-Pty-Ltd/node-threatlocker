@@ -136,3 +136,56 @@ describe('HTTP 429 retry', () => {
     expect(state.count).toBe(2);
   });
 });
+
+describe('replay safety', () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function postSequence(responses: Array<() => Response>) {
+    const state = { count: 0 };
+    server.use(
+      http.post(`${BASE_URL}/Thing`, () => {
+        const next = responses[Math.min(state.count, responses.length - 1)]!;
+        state.count++;
+        return next();
+      }),
+    );
+    return state;
+  }
+
+  it('never replays a POST that is not marked idempotent, on a 429 or a 503', async () => {
+    const limitedState = postSequence([limited('1')]);
+    await expect(makeHttp().request('/Thing', { method: 'POST', body: {} })).rejects.toThrow(
+      /HTTP 429.*Try again in 1 s\./,
+    );
+    expect(limitedState.count).toBe(1);
+
+    const unavailable = postSequence([limited('1', 503)]);
+    await expect(makeHttp().request('/Thing', { method: 'POST', body: {} })).rejects.toThrow(
+      'Server error: 503 for /Thing. Try again in 1 s.',
+    );
+    expect(unavailable.count).toBe(1);
+  });
+
+  it('retries a read-only POST search marked idempotent', async () => {
+    const state = postSequence([limited('1'), ok]);
+
+    const pending = makeHttp().request('/Thing', { method: 'POST', body: {}, idempotent: true });
+    await vi.advanceTimersByTimeAsync(1000);
+
+    await expect(pending).resolves.toEqual({ ok: true });
+    expect(state.count).toBe(2);
+  });
+
+  it('leaves a 503 without Retry-After as it was', async () => {
+    postSequence([() => HttpResponse.json({ error: 'x' }, { status: 503 })]);
+    await expect(makeHttp(0).request('/Thing', { method: 'POST', body: {} })).rejects.toThrow(
+      /^Server error: 503 for \/Thing$/,
+    );
+  });
+});

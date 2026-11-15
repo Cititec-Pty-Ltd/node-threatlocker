@@ -39,6 +39,14 @@ export interface RequestOptions {
    * ids or organization scope, so retrying only multiplies latency.
    */
   retryServerErrors?: boolean;
+  /**
+   * The request is safe to send again (it only reads). Defaults to true for
+   * GET/HEAD/OPTIONS and false otherwise. ThreatLocker does not document
+   * that a rate-limited or failed write had no effect, so a request that is
+   * not idempotent is never replayed: a 429, 5xx or network error fails at
+   * once. Read-only searches sent as POST set this to true.
+   */
+  idempotent?: boolean;
 }
 
 /** Shape of the `pagination` response header portalapi sets on list endpoints. */
@@ -76,6 +84,7 @@ export class HttpClient {
    */
   async requestWithMeta<T>(path: string, options: RequestOptions = {}): Promise<{ data: T; pagination?: PaginationMeta }> {
     const { method = 'GET', params, body } = options;
+    const replaySafe = options.idempotent ?? ['GET', 'HEAD', 'OPTIONS'].includes(method.toUpperCase());
 
     let url = `${this.baseUrl}${path}`;
     if (params) {
@@ -137,6 +146,7 @@ export class HttpClient {
         });
       } catch (err) {
         lastError = err as Error;
+        if (!replaySafe) throw lastError;
         continue;
       }
 
@@ -180,7 +190,7 @@ export class HttpClient {
           // holding the call for a minute or more.
           const retryAfterMs = parseRetryAfter(response.headers.get('retry-after'));
           const delay = retryDelayMs(rateLimitRetries, retryAfterMs, rateLimitWaitedMs);
-          if (delay !== undefined && attempt < this.maxRetries) {
+          if (replaySafe && delay !== undefined && attempt < this.maxRetries) {
             rateLimitRetries++;
             rateLimitWaitedMs += delay;
             rateLimitDelayMs = delay;
@@ -196,11 +206,16 @@ export class HttpClient {
         }
         default:
           if (response.status >= 500) {
-            lastError = new ServerError(`Server error: ${response.status} for ${path}`, responseBody, response.status);
+            // A 503 that carries Retry-After keeps the requested wait in the error.
+            const retryAfterMs =
+              response.status === 503 ? parseRetryAfter(response.headers.get('retry-after')) : undefined;
+            const wait =
+              retryAfterMs === undefined ? '' : `. Try again in ${Math.max(1, Math.ceil(retryAfterMs / 1000))} s.`;
+            lastError = new ServerError(`Server error: ${response.status} for ${path}${wait}`, responseBody, response.status);
             const retryable =
               response.status === 502 || response.status === 503 || response.status === 504 ||
               (response.status === 500 && options.retryServerErrors === true);
-            if (retryable && attempt < this.maxRetries) continue;
+            if (retryable && replaySafe && attempt < this.maxRetries) continue;
             throw lastError;
           }
           throw new ServiceError(`HTTP ${response.status}`, response.status, responseBody);
