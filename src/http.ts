@@ -107,7 +107,6 @@ export class HttpClient {
     let lastError: Error | null = null;
     let rateLimitDelayMs: number | undefined;
     let rateLimitRetries = 0;
-    let rateLimitWaitedMs = 0;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) {
         // A 429 sets its own (bounded) wait; everything else backs off.
@@ -185,14 +184,13 @@ export class HttpClient {
         case 404:
           throw new NotFoundError('Resource not found', responseBody);
         case 429: {
-          // Retried at most twice, and only while the wait is short (see
-          // rate-limit.ts): a long Retry-After is reported at once instead of
-          // holding the call for a minute or more.
+          // Retried at most once, and only for a Retry-After of at most 10 s
+          // (see rate-limit.ts). With no Retry-After, or a longer one, the
+          // error is thrown at once; the 60 s reported then is never a delay.
           const retryAfterMs = parseRetryAfter(response.headers.get('retry-after'));
-          const delay = retryDelayMs(rateLimitRetries, retryAfterMs, rateLimitWaitedMs);
+          const delay = retryDelayMs(rateLimitRetries, retryAfterMs);
           if (replaySafe && delay !== undefined && attempt < this.maxRetries) {
             rateLimitRetries++;
-            rateLimitWaitedMs += delay;
             rateLimitDelayMs = delay;
             continue;
           }
