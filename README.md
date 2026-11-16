@@ -176,7 +176,7 @@ Built-in token bucket rate limiter with configurable limits:
 
 - **Default**: 10 requests/second
 - **Configurable**: Set `rateLimitPerSecond` in client config
-- **Automatic retry**: A rate-limited request (HTTP 429) is retried up to twice (never more than `maxRetries`), waiting for the `Retry-After` ThreatLocker sends (or 1 s then 2 s without one). Each wait is capped at 10 s and the total at 20 s. Past that a `RateLimitError` is thrown at once, saying `HTTP 429` and `Try again in N s.` (`retryAfter` holds N; 60 without a `Retry-After`).
+- **Automatic retry**: A rate-limited request (HTTP 429) is retried once (never more than `maxRetries`) when ThreatLocker sends a `Retry-After` of at most 10 s, after waiting that long. With no `Retry-After`, or a longer one, it is not retried. Past that, or at once, a `RateLimitError` is thrown at once, saying `HTTP 429` and `Try again in N s.` (`retryAfter` holds N; 60 without a `Retry-After`).
 
 ### Retry policy
 
